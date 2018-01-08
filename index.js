@@ -3,26 +3,33 @@ import PropTypes from 'prop-types';
 
 const requests = {};
 
-export class RESTAPIContext extends Component {
+export class Provider extends Component {
 	static childContextTypes = {
-		api: PropTypes.object.isRequired,
+		api: PropTypes.func.isRequired,
+		apiCache: PropTypes.object.isRequired,
 	};
+	constructor(props) {
+		super(props)
+		this.apiCache = {}
+	}
 	getChildContext() {
-		return { api: this.props.api };
+		return { api: this.props.fetch, apiCache: this.apiCache };
 	}
 	render() {
 		return this.props.children;
 	}
 }
 
-export const WithApiData = props => (
-	withApiData( props.mapPropsToData )( props.children )
-)
+export const WithApiData = props => {
+	const ChildComponent = withApiData( props.mapPropsToData )( props.render || props.component );
+	return <ChildComponent {...props} />
+}
 
 export const withApiData = mapPropsToData => WrappedComponent => {
 	class APIDataComponent extends Component {
 		static contextTypes = {
-			api: PropTypes.object.isRequired,
+			api: PropTypes.func.isRequired,
+			apiCache: PropTypes.object.isRequired,
 		};
 		constructor( props ) {
 			super( props );
@@ -30,6 +37,7 @@ export const withApiData = mapPropsToData => WrappedComponent => {
 		}
 
 		componentDidMount() {
+			this.unmounted = false;
 			this.fetchData( this.props );
 		}
 
@@ -60,6 +68,24 @@ export const withApiData = mapPropsToData => WrappedComponent => {
 			const dataProps = { ...this.state.dataProps };
 
 			Object.entries( dataMap ).forEach( ( [ key, endpoint ] ) => {
+				if ( ! endpoint ) {
+					return;
+				}
+				const handleResponse = response => {
+					return response.text().then( responseText => {
+						try {
+							var json = JSON.parse( responseText )
+						} catch( e ) {
+							throw { message: responseText, code: response.status }
+						}
+
+						if ( response.status > 299 ) {
+							throw json;
+						}
+
+						return json;
+					} )
+				}
 				const handleData = data => {
 					if ( this.unmounted ) {
 						return data;
@@ -100,8 +126,8 @@ export const withApiData = mapPropsToData => WrappedComponent => {
 					error:     null,
 					data:      null,
 				};
-				if ( requests[ cacheKey ] ) {
-					return requests[ cacheKey ].then( handleData ).catch( handleError )
+				if ( this.context.apiCache[ cacheKey ] ) {
+					return this.context.apiCache[ cacheKey ].then( handleData ).catch( handleError )
 				} else if ( window.wpRestApiData && window.wpRestApiData[ cacheKey ] ) {
 					dataProps[ key ] = {
 						isLoading: false,
@@ -109,7 +135,8 @@ export const withApiData = mapPropsToData => WrappedComponent => {
 						data:      window.wpRestApiData[ cacheKey ],
 					};
 				} else {
-					return requests[ cacheKey ] = this.context.api.get( endpoint ).then( handleData ).catch( handleError )
+					this.context.apiCache[ cacheKey ] = this.context.api( endpoint ).then( handleResponse );
+					return this.context.apiCache[ cacheKey ].then( handleData ).catch( handleError )
 				}
 
 			} );
@@ -120,8 +147,8 @@ export const withApiData = mapPropsToData => WrappedComponent => {
 			const dataMap = mapPropsToData( this.props );
 			Object.entries( dataMap ).forEach( ( [ key, endpoint ] ) => {
 				const cacheKey = `GET::${endpoint}`;
-				if ( requests[ cacheKey ] ) {
-					delete requests[ cacheKey ];
+				if ( this.context.apiCache[ cacheKey ] ) {
+					delete this.context.apiCache[ cacheKey ];
 				}
 			} );
 			this.fetchData( this.props );
