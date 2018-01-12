@@ -20,9 +20,21 @@ export class Provider extends Component {
 	}
 }
 
-export const WithApiData = props => {
-	const ChildComponent = withApiData( props.mapPropsToData )( props.render || props.component );
-	return <ChildComponent {...props} />
+export class WithApiData extends Component {
+	render( props ) {
+		const ChildComponent = withApiData( this.props.mapPropsToData )( this.props.render || this.props.component );
+		return <ChildComponent ref={ apiData => this.apiData = apiData } {...this.props} />
+	}
+	refreshData() {
+		if ( this.apiData ) {
+			this.apiData.onRefreshData();
+		}
+	}
+	invalidateData() {
+		if ( this.apiData ) {
+			this.apiData.onInvalidateData();
+		}
+	}
 }
 
 export const withApiData = mapPropsToData => WrappedComponent => {
@@ -144,6 +156,10 @@ export const withApiData = mapPropsToData => WrappedComponent => {
 		}
 
 		onRefreshData() {
+			this.onInvalidateData();
+			this.fetchData( this.props );
+		}
+		onInvalidateData() {
 			const dataMap = mapPropsToData( this.props );
 			Object.entries( dataMap ).forEach( ( [ key, endpoint ] ) => {
 				const cacheKey = `GET::${endpoint}`;
@@ -151,7 +167,6 @@ export const withApiData = mapPropsToData => WrappedComponent => {
 					delete this.context.apiCache[ cacheKey ];
 				}
 			} );
-			this.fetchData( this.props );
 		}
 
 		render() {
@@ -160,6 +175,7 @@ export const withApiData = mapPropsToData => WrappedComponent => {
 					{ ...this.props }
 					{ ...this.state.dataProps }
 					refreshData={ () => this.onRefreshData() }
+					invalidateData={ () => this.onInvalidateData() }
 				/>
 			);
 		}
