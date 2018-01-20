@@ -1,8 +1,6 @@
 import React, { Component } from 'react';
 import PropTypes from 'prop-types';
 
-const requests = {};
-
 export class Provider extends Component {
 	static childContextTypes = {
 		api: PropTypes.func.isRequired,
@@ -75,7 +73,7 @@ export const withApiData = mapPropsToData => WrappedComponent => {
 			this.fetchData( nextProps );
 		}
 
-		fetchData( props ) {
+		fetchData( props, skipCache = false ) {
 			const dataMap = mapPropsToData( props );
 			const dataProps = { ...this.state.dataProps };
 
@@ -136,9 +134,9 @@ export const withApiData = mapPropsToData => WrappedComponent => {
 				dataProps[ key ] = {
 					isLoading: true,
 					error:     null,
-					data:      null,
+					...this.state.dataProps[ key ],
 				};
-				if ( this.context.apiCache[ cacheKey ] ) {
+				if ( skipCache === false && this.context.apiCache[ cacheKey ] ) {
 					return this.context.apiCache[ cacheKey ].then( handleData ).catch( handleError )
 				} else if ( window.wpRestApiData && window.wpRestApiData[ cacheKey ] ) {
 					dataProps[ key ] = {
@@ -156,8 +154,7 @@ export const withApiData = mapPropsToData => WrappedComponent => {
 		}
 
 		onRefreshData() {
-			this.onInvalidateData();
-			this.fetchData( this.props );
+			this.fetchData( this.props, true );
 		}
 		onInvalidateData() {
 			const dataMap = mapPropsToData( this.props );
