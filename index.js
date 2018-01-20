@@ -155,6 +155,9 @@ export const withApiData = mapPropsToData => WrappedComponent => {
 			this.setState( { dataProps } );
 		}
 
+		onFetch(...args) {
+			return this.context.api( ...args );
+		}
 		onRefreshData() {
 			this.onInvalidateData();
 			this.fetchData( this.props );
@@ -169,11 +172,17 @@ export const withApiData = mapPropsToData => WrappedComponent => {
 			} );
 		}
 
+		getWrappedInstance() {
+			return this.internalRef;
+		}
+
 		render() {
 			return (
 				<WrappedComponent
 					{ ...this.props }
 					{ ...this.state.dataProps }
+					fetch={(...args) => this.onFetch(...args)}
+					ref={ref => this.wrapperRef = ref}
 					refreshData={ () => this.onRefreshData() }
 					invalidateData={ () => this.onInvalidateData() }
 				/>
