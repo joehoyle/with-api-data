@@ -1,5 +1,6 @@
 import React, { Component } from 'react';
 import PropTypes from 'prop-types';
+import { isEqual } from 'lodash';
 
 export class Provider extends Component {
 	static childContextTypes = {
@@ -55,6 +56,15 @@ export const withApiData = mapPropsToData => WrappedComponent => {
 			this.unmounted = true;
 		}
 
+		componentWillReceiveProps( nextProps ) {
+			const oldDataMap = mapPropsToData(this.props);
+			const newDataMap = mapPropsToData(nextProps);
+			if ( isEqual( oldDataMap, newDataMap ) ) {
+				return;
+			}
+			this.fetchData( nextProps );
+		}
+
 		getPropsMapping() {
 			const dataMap = mapPropsToData( this.props );
 			const keys = Object.keys( dataMap );
@@ -67,10 +77,6 @@ export const withApiData = mapPropsToData => WrappedComponent => {
 				}
 			} );
 			return dataProps;
-		}
-
-		componentWillReceiveProps( nextProps ) {
-			this.fetchData( nextProps );
 		}
 
 		fetchData( props, skipCache = false ) {
@@ -169,8 +175,17 @@ export const withApiData = mapPropsToData => WrappedComponent => {
 			} );
 		}
 
+		onInvalidateDataForUrl( url ) {
+			const cacheKey = `GET::${url}`;
+			if ( this.context.apiCache[ cacheKey ] ) {
+				delete this.context.apiCache[ cacheKey ];
+				return true;
+			}
+			return false;
+		}
+
 		getWrappedInstance() {
-			return this.internalRef;
+			return this.wrapperRef;
 		}
 
 		render() {
@@ -180,8 +195,9 @@ export const withApiData = mapPropsToData => WrappedComponent => {
 					{ ...this.state.dataProps }
 					fetch={(...args) => this.onFetch(...args)}
 					ref={ref => this.wrapperRef = ref}
-					refreshData={ () => this.onRefreshData() }
+					refreshData={ (...args) => this.onRefreshData(...args) }
 					invalidateData={ () => this.onInvalidateData() }
+					invalidateDataForUrl={ (...args) => this.onInvalidateDataForUrl( ...args ) }
 				/>
 			);
 		}
