@@ -2,14 +2,75 @@ import React, { Component } from 'react';
 import PropTypes from 'prop-types';
 import { isEqual } from 'lodash';
 
+class ApiCache {
+	constructor( fetch ) {
+		this.fetch = fetch;
+		this.cache = {};
+		this.eventSubscribers = {};
+	}
+	get( url, params ) {
+		if ( this.getCache( url ) === 'pending' ) {
+			return;
+		}
+		if ( this.getCache( url ) ) {
+			return this.trigger( url, this.getCache( url ) )
+		}
+		const promise = this.fetch( url, params )
+			.then( r => this.handleResponse( r ) )
+			.then( response => {
+				this.setCache( url, response )
+				this.trigger( url, response )
+			} )
+			.catch( error => {
+				this.setCache( url, error )
+				this.trigger( url, error )
+			} )
+
+		this.setCache( url, 'pending' )
+
+		return promise;
+	}
+	getCache( url ) {
+		return this.cache[ url ];
+	}
+	setCache( url, response ) {
+		this.cache[ url ] = response;
+	}
+	handleResponse( response ) {
+		return response.text().then( responseText => {
+			try {
+				var json = JSON.parse( responseText )
+			} catch ( e ) {
+				throw new Error( responseText );
+			}
+
+			if ( response.status > 299 ) {
+				throw new Error( json.message );
+			}
+			return json;
+		} )
+	}
+	on( url, callback ) {
+		this.eventSubscribers[ url ] = this.eventSubscribers[ url ] || [];
+		this.eventSubscribers[ url ].push( callback );
+		this.get( url )
+	}
+	trigger( url, response ) {
+		this.eventSubscribers[url].map( f => f( response ) )
+	}
+	removeCache( url ) {
+		delete this.cache[ url ];
+	}
+}
+
 export class Provider extends Component {
 	static childContextTypes = {
-		api: PropTypes.func.isRequired,
+		api:      PropTypes.func.isRequired,
 		apiCache: PropTypes.object.isRequired,
 	};
-	constructor(props) {
-		super(props)
-		this.apiCache = {}
+	constructor( props ) {
+		super( props )
+		this.apiCache = new ApiCache( props.fetch );
 	}
 	getChildContext() {
 		return { api: this.props.fetch, apiCache: this.apiCache };
@@ -39,7 +100,7 @@ export class WithApiData extends Component {
 export const withApiData = mapPropsToData => WrappedComponent => {
 	class APIDataComponent extends Component {
 		static contextTypes = {
-			api: PropTypes.func.isRequired,
+			api:      PropTypes.func.isRequired,
 			apiCache: PropTypes.object.isRequired,
 		};
 		constructor( props ) {
@@ -49,7 +110,7 @@ export const withApiData = mapPropsToData => WrappedComponent => {
 
 		componentDidMount() {
 			this.unmounted = false;
-			this.fetchData( this.props );
+			this.updateProps( this.props );
 		}
 
 		componentWillUnmount() {
@@ -57,12 +118,12 @@ export const withApiData = mapPropsToData => WrappedComponent => {
 		}
 
 		componentWillReceiveProps( nextProps ) {
-			const oldDataMap = mapPropsToData(this.props);
-			const newDataMap = mapPropsToData(nextProps);
+			const oldDataMap = mapPropsToData( this.props );
+			const newDataMap = mapPropsToData( nextProps );
 			if ( isEqual( oldDataMap, newDataMap ) ) {
 				return;
 			}
-			this.fetchData( nextProps );
+			this.updateProps( nextProps );
 		}
 
 		getPropsMapping() {
@@ -79,7 +140,7 @@ export const withApiData = mapPropsToData => WrappedComponent => {
 			return dataProps;
 		}
 
-		fetchData( props, skipCache = false ) {
+		updateProps( props, skipCache = false ) {
 			const dataMap = mapPropsToData( props );
 			const dataProps = { ...this.state.dataProps };
 
@@ -87,27 +148,18 @@ export const withApiData = mapPropsToData => WrappedComponent => {
 				if ( ! endpoint ) {
 					return;
 				}
-				const handleResponse = response => {
-					return response.text().then( responseText => {
-						try {
-							var json = JSON.parse( responseText )
-						} catch( e ) {
-							throw { message: responseText, code: response.status }
-						}
-
-						if ( response.status > 299 ) {
-							throw json;
-						}
-
-						return json;
-					} )
-				}
-				const handleData = data => {
+				this.context.apiCache.on( endpoint, ( data ) => {
+					let error = null;
 					if ( this.unmounted ) {
 						return data;
 					}
+
+					if ( data instanceof Error ) {
+						error = data;
+						data = null;
+					}
 					const prop = {
-						error:     null,
+						error:     error,
 						isLoading: false,
 						data,
 					};
@@ -117,71 +169,36 @@ export const withApiData = mapPropsToData => WrappedComponent => {
 							[ key ]: prop,
 						},
 					} );
-					return data;
-				};
-				const handleError = error => {
-					if ( this.unmounted ) {
-						return error;
-					}
-					const data = {
-						error,
-						isLoading: false,
-						data:      null,
-					};
-					this.setState( {
-						dataProps: {
-							...this.state.dataProps,
-							[ key ]: data,
-						},
-					} )
-				};
+				} )
 
-				const cacheKey = `GET::${endpoint}`;
 				dataProps[ key ] = {
 					isLoading: true,
 					error:     null,
 					...this.state.dataProps[ key ],
 				};
-				if ( skipCache === false && this.context.apiCache[ cacheKey ] ) {
-					return this.context.apiCache[ cacheKey ].then( handleData ).catch( handleError )
-				} else if ( window.wpRestApiData && window.wpRestApiData[ cacheKey ] ) {
-					dataProps[ key ] = {
-						isLoading: false,
-						error:     null,
-						data:      window.wpRestApiData[ cacheKey ],
-					};
-				} else {
-					this.context.apiCache[ cacheKey ] = this.context.api( endpoint ).then( handleResponse );
-					return this.context.apiCache[ cacheKey ].then( handleData ).catch( handleError )
-				}
 
 			} );
 			this.setState( { dataProps } );
 		}
 
-		onFetch(...args) {
+		onFetch( ...args ) {
 			return this.context.api( ...args );
 		}
 		onRefreshData() {
-			this.fetchData( this.props, true );
+			this.onInvalidateData();
 		}
 		onInvalidateData() {
 			const dataMap = mapPropsToData( this.props );
 			Object.entries( dataMap ).forEach( ( [ key, endpoint ] ) => {
-				const cacheKey = `GET::${endpoint}`;
-				if ( this.context.apiCache[ cacheKey ] ) {
-					delete this.context.apiCache[ cacheKey ];
-				}
+				this.context.apiCache.removeCache( endpoint )
 			} );
+			this.updateProps( this.props );
 		}
 
 		onInvalidateDataForUrl( url ) {
-			const cacheKey = `GET::${url}`;
-			if ( this.context.apiCache[ cacheKey ] ) {
-				delete this.context.apiCache[ cacheKey ];
-				return true;
-			}
-			return false;
+			this.context.apiCache.removeCache( url )
+			this.updateProps( this.props );
+			this.context.apiCache.get( url );
 		}
 
 		getWrappedInstance() {
@@ -193,11 +210,11 @@ export const withApiData = mapPropsToData => WrappedComponent => {
 				<WrappedComponent
 					{ ...this.props }
 					{ ...this.state.dataProps }
-					fetch={(...args) => this.onFetch(...args)}
+					fetch={( ...args ) => this.onFetch( ...args )}
 					ref={ref => this.wrapperRef = ref}
-					refreshData={ (...args) => this.onRefreshData(...args) }
+					refreshData={ ( ...args ) => this.onRefreshData( ...args ) }
 					invalidateData={ () => this.onInvalidateData() }
-					invalidateDataForUrl={ (...args) => this.onInvalidateDataForUrl( ...args ) }
+					invalidateDataForUrl={ ( ...args ) => this.onInvalidateDataForUrl( ...args ) }
 				/>
 			);
 		}
