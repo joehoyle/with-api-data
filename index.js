@@ -122,10 +122,21 @@ export const withApiData = mapPropsToData => WrappedComponent => {
 			if ( isEqual( oldDataMap, newDataMap ) ) {
 				return;
 			}
-			this.updateProps( nextProps );
+			// When the `mapPropsToData` function returns a different
+			// result, reset all the data to empty and loading.
+			const keys = Object.keys( newDataMap );
+			const dataProps = {};
+			keys.forEach( key => {
+				dataProps[ key ] = {
+					isLoading: true,
+					error:     null,
+					data:      null,
+				}
+			} );
+			this.setState( dataProps, () => this.updateProps( nextProps ) );
 		}
 
-		updateProps( props, skipCache = false ) {
+		updateProps( props ) {
 			const dataMap = mapPropsToData( props );
 
 			Object.entries( dataMap ).forEach( ( [ key, endpoint ] ) => {
@@ -178,6 +189,26 @@ export const withApiData = mapPropsToData => WrappedComponent => {
 			this.context.apiCache.get( url );
 		}
 
+		onPost( url, data ) {
+			return this.onFetch( url, {
+				headers: {
+					Accept:         'application/json',
+					'Content-Type': 'application/json',
+				},
+				body:   JSON.stringify( data ),
+				method: 'POST',
+			} ).then( response => {
+				return response.text().then( responseText => {
+					try {
+						var json = JSON.parse( responseText )
+					} catch( e ) {
+						throw new Error( responseText );
+					}
+					return json;
+				} )
+			} )
+		}
+
 		getWrappedInstance() {
 			return this.wrapperRef;
 		}
@@ -188,6 +219,7 @@ export const withApiData = mapPropsToData => WrappedComponent => {
 					{ ...this.props }
 					{ ...this.state }
 					fetch={( ...args ) => this.onFetch( ...args )}
+					post={ (...args) => this.onPost(...args)}
 					ref={ref => this.wrapperRef = ref}
 					refreshData={ ( ...args ) => this.onRefreshData( ...args ) }
 					invalidateData={ () => this.onInvalidateData() }
