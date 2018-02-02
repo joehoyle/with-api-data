@@ -9,12 +9,7 @@ class ApiCache {
 		this.eventSubscribers = {};
 	}
 	get( url, params ) {
-		if ( this.getCache( url ) === 'pending' ) {
-			return;
-		}
-		if ( this.getCache( url ) ) {
-			return this.trigger( url, this.getCache( url ) )
-		}
+
 		const promise = this.fetch( url, params )
 			.then( r => this.handleResponse( r ) )
 			.then( response => {
@@ -53,9 +48,19 @@ class ApiCache {
 	on( url, callback ) {
 		this.eventSubscribers[ url ] = this.eventSubscribers[ url ] || [];
 		this.eventSubscribers[ url ].push( callback );
+
+		if ( this.getCache( url ) === 'pending' ) {
+			return;
+		}
+		if ( this.getCache( url ) ) {
+			return callback( this.getCache( url ) );
+		}
 		this.get( url )
 	}
 	trigger( url, response ) {
+		if ( ! this.eventSubscribers[url] ) {
+			console.log( 'no subscribers found for url', url )
+		}
 		this.eventSubscribers[url].map( f => f( response ) )
 	}
 	removeCache( url ) {
@@ -80,23 +85,6 @@ export class Provider extends Component {
 	}
 }
 
-export class WithApiData extends Component {
-	render( props ) {
-		const ChildComponent = withApiData( this.props.mapPropsToData )( this.props.render || this.props.component );
-		return <ChildComponent ref={ apiData => this.apiData = apiData } {...this.props} />
-	}
-	refreshData() {
-		if ( this.apiData ) {
-			this.apiData.onRefreshData();
-		}
-	}
-	invalidateData() {
-		if ( this.apiData ) {
-			this.apiData.onInvalidateData();
-		}
-	}
-}
-
 export const withApiData = mapPropsToData => WrappedComponent => {
 	class APIDataComponent extends Component {
 		static contextTypes = {
@@ -105,7 +93,18 @@ export const withApiData = mapPropsToData => WrappedComponent => {
 		};
 		constructor( props ) {
 			super( props );
-			this.state = { dataProps: this.getPropsMapping() };
+
+			const dataMap = mapPropsToData( this.props );
+			const keys = Object.keys( dataMap );
+			const dataProps = {};
+			keys.forEach( key => {
+				dataProps[ key ] = {
+					isLoading: true,
+					error:     null,
+					data:      null,
+				}
+			} );
+			this.state = dataProps;
 		}
 
 		componentDidMount() {
@@ -126,29 +125,21 @@ export const withApiData = mapPropsToData => WrappedComponent => {
 			this.updateProps( nextProps );
 		}
 
-		getPropsMapping() {
-			const dataMap = mapPropsToData( this.props );
-			const keys = Object.keys( dataMap );
-			const dataProps = {};
-			keys.forEach( key => {
-				dataProps[ key ] = {
-					isLoading: true,
-					error:     null,
-					data:      null,
-				}
-			} );
-			return dataProps;
-		}
-
 		updateProps( props, skipCache = false ) {
 			const dataMap = mapPropsToData( props );
-			const dataProps = { ...this.state.dataProps };
 
 			Object.entries( dataMap ).forEach( ( [ key, endpoint ] ) => {
 				if ( ! endpoint ) {
 					return;
 				}
-				this.context.apiCache.on( endpoint, ( data ) => {
+				this.setState( {
+					[ key ]: {
+						isLoading: true,
+						error:     null,
+						...this.state[ key ],
+					},
+				} )
+				this.context.apiCache.on( endpoint, data => {
 					let error = null;
 					if ( this.unmounted ) {
 						return data;
@@ -159,28 +150,14 @@ export const withApiData = mapPropsToData => WrappedComponent => {
 						data = null;
 					}
 					const prop = {
-						error:     error,
+						error,
 						isLoading: false,
 						data,
 					};
-					this.setState( {
-						dataProps: {
-							...this.state.dataProps,
-							[ key ]: prop,
-						},
-					} );
+					this.setState( { [ key ]: prop } );
 				} )
-
-				dataProps[ key ] = {
-					isLoading: true,
-					error:     null,
-					...this.state.dataProps[ key ],
-				};
-
 			} );
-			this.setState( { dataProps } );
 		}
-
 		onFetch( ...args ) {
 			return this.context.api( ...args );
 		}
@@ -209,7 +186,7 @@ export const withApiData = mapPropsToData => WrappedComponent => {
 			return (
 				<WrappedComponent
 					{ ...this.props }
-					{ ...this.state.dataProps }
+					{ ...this.state }
 					fetch={( ...args ) => this.onFetch( ...args )}
 					ref={ref => this.wrapperRef = ref}
 					refreshData={ ( ...args ) => this.onRefreshData( ...args ) }
@@ -225,4 +202,21 @@ export const withApiData = mapPropsToData => WrappedComponent => {
 	APIDataComponent.displayName = `apiData(${ displayName })`;
 
 	return APIDataComponent;
-};
+}
+
+export class WithApiData extends Component {
+	render( props ) {
+		const ChildComponent = withApiData( this.props.mapPropsToData )( this.props.render || this.props.component );
+		return <ChildComponent ref={ apiData => this.apiData = apiData } {...this.props} />
+	}
+	refreshData() {
+		if ( this.apiData ) {
+			this.apiData.onRefreshData();
+		}
+	}
+	invalidateData() {
+		if ( this.apiData ) {
+			this.apiData.onInvalidateData();
+		}
+	}
+}
