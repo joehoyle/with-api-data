@@ -3,9 +3,9 @@ import PropTypes from 'prop-types';
 import { isEqual } from 'lodash';
 
 class ApiCache {
-	constructor( fetch ) {
+	constructor( fetch, initialData = {} ) {
 		this.fetch = fetch;
-		this.cache = {};
+		this.cache = { ...initialData };
 		this.eventSubscribers = {};
 	}
 	get( url, params ) {
@@ -75,7 +75,7 @@ export class Provider extends Component {
 	};
 	constructor( props ) {
 		super( props )
-		this.apiCache = new ApiCache( props.fetch );
+		this.apiCache = new ApiCache( props.fetch, props.initialData );
 	}
 	getChildContext() {
 		return { api: this.props.fetch, apiCache: this.apiCache };
