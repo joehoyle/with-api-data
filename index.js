@@ -75,7 +75,14 @@ export class Provider extends Component {
 	};
 	constructor( props ) {
 		super( props )
-		this.apiCache = new ApiCache( props.fetch );
+		if ( props.cacheKey ) {
+			if ( ! caches[ props.cacheKey ] ) {
+				caches[ props.cacheKey ] = new ApiCache( props.fetch );
+			}
+			this.apiCache = caches[ props.cacheKey ];
+		} else {
+			this.apiCache = new ApiCache( props.fetch );
+		}
 	}
 	getChildContext() {
 		return { api: this.props.fetch, apiCache: this.apiCache };
@@ -237,18 +244,89 @@ export const withApiData = mapPropsToData => WrappedComponent => {
 }
 
 export class WithApiData extends Component {
-	render( props ) {
-		const ChildComponent = withApiData( this.props.mapPropsToData )( this.props.render || this.props.component );
-		return <ChildComponent ref={ apiData => this.apiData = apiData } {...this.props} />
+	static contextTypes = {
+		api:      PropTypes.func.isRequired,
+		apiCache: PropTypes.object.isRequired,
+	};
+	constructor( props ) {
+		super( props );
+		const dataMap = props.data;
+		const keys = Object.keys( dataMap );
+		const dataProps = {};
+		keys.forEach( key => {
+			dataProps[ key ] = {
+				isLoading: true,
+				error:     null,
+				data:      null,
+			}
+		} );
+		this.state = dataProps;
 	}
-	refreshData() {
-		if ( this.apiData ) {
-			this.apiData.onRefreshData();
-		}
+
+	componentDidMount() {
+		this.unmounted = false;
+		this.updateProps( this.props );
 	}
-	invalidateData() {
-		if ( this.apiData ) {
-			this.apiData.onInvalidateData();
+
+	componentWillUnmount() {
+		this.unmounted = true;
+	}
+
+	componentWillReceiveProps( nextProps ) {
+		const oldDataMap = this.props.data;
+		const newDataMap = nextProps.data;
+		if ( isEqual( oldDataMap, newDataMap ) ) {
+			return;
 		}
+		// When the `mapPropsToData` function returns a different
+		// result, reset all the data to empty and loading.
+		const keys = Object.keys( newDataMap );
+		const dataProps = {};
+		keys.forEach( key => {
+			dataProps[ key ] = {
+				isLoading: true,
+				error:     null,
+				data:      null,
+			}
+		} );
+		this.setState( dataProps, () => this.updateProps( nextProps ) );
+	}
+
+	updateProps( props ) {
+		const dataMap = props.data;
+
+		Object.entries( dataMap ).forEach( ( [ key, endpoint ] ) => {
+			if ( ! endpoint ) {
+				return;
+			}
+			this.setState( {
+				[ key ]: {
+					isLoading: true,
+					error:     null,
+					...this.state[ key ],
+				},
+			} )
+			this.context.apiCache.on( endpoint, data => {
+				let error = null;
+				if ( this.unmounted ) {
+					return data;
+				}
+
+				if ( data instanceof Error ) {
+					error = data;
+					data = null;
+				}
+				const prop = {
+					error,
+					isLoading: false,
+					data,
+				};
+				this.setState( { [ key ]: prop } );
+			} )
+		} );
+	}
+
+	render() {
+		return this.props.render( { ...this.state } )
 	}
 }
