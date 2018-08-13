@@ -2,10 +2,12 @@ import React, { Component } from 'react';
 import PropTypes from 'prop-types';
 import { isEqual } from 'lodash';
 
+const caches = {};
+
 class ApiCache {
-	constructor( fetch ) {
+	constructor( fetch, initialData = {} ) {
 		this.fetch = fetch;
-		this.cache = {};
+		this.cache = { ...initialData };
 		this.eventSubscribers = {};
 	}
 	get( url, params ) {
@@ -77,11 +79,11 @@ export class Provider extends Component {
 		super( props )
 		if ( props.cacheKey ) {
 			if ( ! caches[ props.cacheKey ] ) {
-				caches[ props.cacheKey ] = new ApiCache( props.fetch );
+				caches[ props.cacheKey ] = new ApiCache( props.fetch, props.initialData );
 			}
 			this.apiCache = caches[ props.cacheKey ];
 		} else {
-			this.apiCache = new ApiCache( props.fetch );
+			this.apiCache = new ApiCache( props.fetch, props.initialData );
 		}
 	}
 	getChildContext() {
