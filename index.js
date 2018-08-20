@@ -294,6 +294,14 @@ export class WithApiData extends Component {
 		this.setState( dataProps, () => this.updateProps( nextProps ) );
 	}
 
+	invalidateData() {
+		const dataMap = this.props.data;
+		Object.entries( dataMap ).forEach( ( [ key, endpoint ] ) => {
+			this.context.apiCache.removeCache( endpoint )
+		} );
+		this.updateProps( this.props );
+	}
+
 	updateProps( props ) {
 		const dataMap = props.data;
 
