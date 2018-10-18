@@ -137,6 +137,7 @@ export const withApiData = mapPropsToData => WrappedComponent => {
 			const dataProps = {};
 			keys.forEach( key => {
 				dataProps[ key ] = {
+					url:       null,
 					isLoading: true,
 					error:     null,
 					data:      null,
@@ -157,6 +158,7 @@ export const withApiData = mapPropsToData => WrappedComponent => {
 						isLoading: true,
 						error:     null,
 						...this.state[ key ],
+						url: endpoint,
 					},
 				} )
 				this.context.apiCache.on( endpoint, data => {
@@ -169,12 +171,19 @@ export const withApiData = mapPropsToData => WrappedComponent => {
 						error = data;
 						data = null;
 					}
-					const prop = {
-						error,
-						isLoading: false,
-						data,
-					};
-					this.setState( { [ key ]: prop } );
+					this.setState( state => {
+						// Check for race conditions
+						if ( state[ key ].url !== endpoint ) {
+							return {};
+						}
+
+						const prop = {
+							error,
+							isLoading: false,
+							data,
+						};
+						return { [ key ]: prop };
+					} );
 				} )
 			} );
 		}
@@ -314,6 +323,7 @@ export class WithApiData extends Component {
 					isLoading: true,
 					error:     null,
 					...this.state[ key ],
+					url: endpoint,
 				},
 			} )
 			this.context.apiCache.on( endpoint, data => {
@@ -326,12 +336,19 @@ export class WithApiData extends Component {
 					error = data;
 					data = null;
 				}
-				const prop = {
-					error,
-					isLoading: false,
-					data,
-				};
-				this.setState( { [ key ]: prop } );
+				this.setState( state => {
+					// Check for race conditions
+					if ( state[ key ].url !== endpoint ) {
+						return {};
+					}
+
+					const prop = {
+						error,
+						isLoading: false,
+						data,
+					};
+					return { [ key ]: prop };
+				} );
 			} )
 		} );
 	}
