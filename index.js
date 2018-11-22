@@ -322,10 +322,10 @@ export class WithApiData extends Component {
 				[ key ]: {
 					isLoading: true,
 					error:     null,
-					...this.state[ key ],
+					data: null,
 					url: endpoint,
 				},
-			} )
+			} );
 			this.context.apiCache.on( endpoint, data => {
 				let error = null;
 				if ( this.unmounted ) {
