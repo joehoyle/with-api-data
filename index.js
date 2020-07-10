@@ -157,7 +157,7 @@ export const withApiData = mapPropsToData => WrappedComponent => {
 					[ key ]: {
 						isLoading: true,
 						error:     null,
-						...this.state[ key ],
+						data: null,
 						url: endpoint,
 					},
 				} )
