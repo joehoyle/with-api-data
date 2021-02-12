@@ -125,12 +125,13 @@ export const withApiData = mapPropsToData => WrappedComponent => {
 			this.unmounted = true;
 		}
 
-		componentWillReceiveProps( nextProps ) {
-			const oldDataMap = mapPropsToData( this.props );
-			const newDataMap = mapPropsToData( nextProps );
+		componentDidUpdate( prevProps ) {
+			const oldDataMap = mapPropsToData( prevProps );
+			const newDataMap = mapPropsToData( this.props );
 			if ( isEqual( oldDataMap, newDataMap ) ) {
 				return;
 			}
+
 			// When the `mapPropsToData` function returns a different
 			// result, reset all the data to empty and loading.
 			const keys = Object.keys( newDataMap );
@@ -143,7 +144,7 @@ export const withApiData = mapPropsToData => WrappedComponent => {
 					data:      null,
 				}
 			} );
-			this.setState( dataProps, () => this.updateProps( nextProps ) );
+			this.setState( dataProps, () => this.updateProps( this.props ) );
 		}
 
 		updateProps( props ) {
@@ -283,9 +284,9 @@ export class WithApiData extends Component {
 		this.unmounted = true;
 	}
 
-	componentWillReceiveProps( nextProps ) {
-		const oldDataMap = this.props.data;
-		const newDataMap = nextProps.data;
+	componentDidUpdate( prevProps ) {
+		const oldDataMap = prevProps.data;
+		const newDataMap = this.props.data;
 		if ( isEqual( oldDataMap, newDataMap ) ) {
 			return;
 		}
@@ -300,7 +301,7 @@ export class WithApiData extends Component {
 				data:      null,
 			}
 		} );
-		this.setState( dataProps, () => this.updateProps( nextProps ) );
+		this.setState( dataProps, () => this.updateProps( this.props ) );
 	}
 
 	invalidateData() {
