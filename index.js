@@ -44,7 +44,7 @@ class ApiCache {
 			if ( response.status > 299 ) {
 				throw new Error( json.message );
 			}
-			return json;
+			return { data: json, response };
 		} )
 	}
 	on( url, callback ) {
@@ -111,6 +111,7 @@ export const withApiData = mapPropsToData => WrappedComponent => {
 					isLoading: true,
 					error:     null,
 					data:      null,
+					response:  null,
 				}
 			} );
 			this.state = dataProps;
@@ -141,6 +142,7 @@ export const withApiData = mapPropsToData => WrappedComponent => {
 					isLoading: true,
 					error:     null,
 					data:      null,
+					response:  null,
 				}
 			} );
 			this.setState( dataProps, () => this.updateProps( nextProps ) );
@@ -158,10 +160,12 @@ export const withApiData = mapPropsToData => WrappedComponent => {
 						isLoading: true,
 						error:     null,
 						data: null,
+						response: null,
 						url: endpoint,
 					},
 				} )
-				this.context.apiCache.on( endpoint, data => {
+				this.context.apiCache.on( endpoint, info => {
+					let { data, response } = info;
 					let error = null;
 					if ( this.unmounted ) {
 						return data;
@@ -181,6 +185,7 @@ export const withApiData = mapPropsToData => WrappedComponent => {
 							error,
 							isLoading: false,
 							data,
+							response,
 						};
 						return { [ key ]: prop };
 					} );
@@ -269,6 +274,7 @@ export class WithApiData extends Component {
 				isLoading: true,
 				error:     null,
 				data:      null,
+				response:  null,
 			}
 		} );
 		this.state = dataProps;
@@ -298,6 +304,7 @@ export class WithApiData extends Component {
 				isLoading: true,
 				error:     null,
 				data:      null,
+				response:  null,
 			}
 		} );
 		this.setState( dataProps, () => this.updateProps( nextProps ) );
@@ -323,10 +330,12 @@ export class WithApiData extends Component {
 					isLoading: true,
 					error:     null,
 					data: null,
+					response: null,
 					url: endpoint,
 				},
 			} );
-			this.context.apiCache.on( endpoint, data => {
+			this.context.apiCache.on( endpoint, info => {
+				let { data, response } = info;
 				let error = null;
 				if ( this.unmounted ) {
 					return data;
@@ -346,6 +355,7 @@ export class WithApiData extends Component {
 						error,
 						isLoading: false,
 						data,
+						response,
 					};
 					return { [ key ]: prop };
 				} );
